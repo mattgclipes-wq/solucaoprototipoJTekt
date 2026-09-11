@@ -388,10 +388,32 @@
     background: var(--bg);
   }
   .form-field input:focus{ outline: none; border-color: var(--accent); }
+  .form-field select{
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 9px 10px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    background-color: var(--bg);
+  }
+  .form-field select:focus{ outline: none; border-color: var(--accent); }
+  .form-field input:read-only{ color: var(--ink-soft); background: var(--line); }
   .form-actions{
     display:flex;
     gap: 10px;
     margin-top: 18px;
+  }
+  .success-banner{
+    background: var(--ok-bg);
+    color: var(--ok);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 16px;
   }
 </style>
 </head>
@@ -530,10 +552,28 @@
     </svg>`;
   }
 
+  // ---------- categorias, unidades e prefixos pré-programados ----------
+  const CATEGORIES = ['Ferragens', 'EPI', 'Elétrica', 'Limpeza', 'Embalagens', 'Ferramentas', 'Papelaria'];
+  const UNITS = ['un', 'par', 'pct', 'rolo', 'caixa', 'resma', 'galão', 'kg', 'g', 'L', 'ml', 'm', 'cm', 'm²'];
+  const CATEGORY_PREFIX = {
+    'Ferragens':'FR', 'EPI':'EP', 'Elétrica':'EL', 'Limpeza':'LP',
+    'Embalagens':'EM', 'Ferramentas':'FT', 'Papelaria':'PP'
+  };
+
+  function generateSku(category){
+    const prefix = CATEGORY_PREFIX[category] || category.slice(0,2).toUpperCase();
+    const nums = PRODUCTS
+      .filter(p => p.sku.startsWith(prefix + '-'))
+      .map(p => parseInt(p.sku.split('-')[1], 10))
+      .filter(n => !isNaN(n));
+    const next = nums.length ? Math.max(...nums) + 1 : 1001;
+    return prefix + '-' + next;
+  }
+
   // ---------- estado ----------
   const state = { query:'', category:'todas', corredor:'todos', status:'todos', sort:'nome' };
 
-  const categories = ['todas', ...new Set(PRODUCTS.map(p=>p.category))];
+  const categories = ['todas', ...CATEGORIES];
   const corredores = ['todos', ...new Set(PRODUCTS.map(p=>p.sector.split('-')[0]))].sort();
 
   const categoryFilter = document.getElementById('categoryFilter');
@@ -607,11 +647,12 @@
     });
   }
 
-  function openDetail(sku){
+  function openDetail(sku, opts = {}){
     const p = PRODUCTS.find(x => x.sku === sku);
     const st = statusOf(p);
     const s = STATUS[st];
     document.getElementById('detailContent').innerHTML = `
+      ${opts.justCreated ? '<div class="success-banner">Produto adicionado! SKU e código QR gerados automaticamente.</div>' : ''}
       <div class="detail-qr">${qrSvg(p.qr, 140)}</div>
       <div class="detail-title">${p.name}</div>
       <div class="detail-code">${p.qr}</div>
@@ -644,7 +685,7 @@
 
   function renderForm(product){
     const isEdit = !!product;
-    const p = product || { sku:'', name:'', category:'', sector:'', qty:0, min:0, unit:'un' };
+    const p = product || { sku:'', name:'', category:'', sector:'', qty:0, min:0, unit:'' };
     return `
       <div class="form-title">${isEdit ? 'Editar produto' : 'Adicionar produto'}</div>
       <form id="productForm">
@@ -652,36 +693,42 @@
           <label>Nome do produto</label>
           <input type="text" id="f-name" value="${p.name}" required>
         </div>
+        ${isEdit ? `
+        <div class="form-field">
+          <label>SKU</label>
+          <input type="text" id="f-sku" value="${p.sku}" readonly>
+        </div>` : ''}
         <div class="form-grid">
-          <div class="form-field">
-            <label>SKU</label>
-            <input type="text" id="f-sku" value="${p.sku}" ${isEdit ? 'readonly' : ''} required>
-          </div>
           <div class="form-field">
             <label>Categoria</label>
-            <input type="text" id="f-category" value="${p.category}" required>
+            <select id="f-category" required>
+              <option value="" disabled ${p.category ? '' : 'selected'}>Selecione</option>
+              ${CATEGORIES.map(c => `<option value="${c}" ${p.category===c ? 'selected' : ''}>${c}</option>`).join('')}
+            </select>
           </div>
-        </div>
-        <div class="form-grid">
           <div class="form-field">
             <label>Setor</label>
             <input type="text" id="f-sector" value="${p.sector}" placeholder="Ex: A-01" required>
           </div>
-          <div class="form-field">
-            <label>Unidade</label>
-            <input type="text" id="f-unit" value="${p.unit}" placeholder="un, kg, m..." required>
-          </div>
         </div>
         <div class="form-grid">
+          <div class="form-field">
+            <label>Unidade</label>
+            <select id="f-unit" required>
+              <option value="" disabled ${p.unit ? '' : 'selected'}>Selecione</option>
+              ${UNITS.map(u => `<option value="${u}" ${p.unit===u ? 'selected' : ''}>${u}</option>`).join('')}
+            </select>
+          </div>
           <div class="form-field">
             <label>Quantidade</label>
             <input type="number" id="f-qty" min="0" value="${p.qty}" required>
           </div>
-          <div class="form-field">
-            <label>Estoque mínimo</label>
-            <input type="number" id="f-min" min="0" value="${p.min}" required>
-          </div>
         </div>
+        <div class="form-field">
+          <label>Estoque mínimo</label>
+          <input type="number" id="f-min" min="0" value="${p.min}" required>
+        </div>
+        ${!isEdit ? '<p style="font-size:12.5px;color:var(--ink-soft);margin:-2px 0 4px;">O SKU e o código QR serão gerados automaticamente ao concluir o cadastro.</p>' : ''}
         <div class="form-actions">
           <button type="button" class="btn-secondary" id="cancelForm">Cancelar</button>
           <button type="submit" class="btn-primary" style="flex:1;">${isEdit ? 'Salvar alterações' : 'Adicionar produto'}</button>
@@ -694,33 +741,31 @@
     document.getElementById('cancelForm').addEventListener('click', closePanel);
     document.getElementById('productForm').addEventListener('submit', (e) => {
       e.preventDefault();
-      const sku = document.getElementById('f-sku').value.trim();
       const name = document.getElementById('f-name').value.trim();
-      const category = document.getElementById('f-category').value.trim();
+      const category = document.getElementById('f-category').value;
       const sector = document.getElementById('f-sector').value.trim();
-      const unit = document.getElementById('f-unit').value.trim();
+      const unit = document.getElementById('f-unit').value;
       const qty = Math.max(0, parseInt(document.getElementById('f-qty').value, 10) || 0);
       const min = Math.max(0, parseInt(document.getElementById('f-min').value, 10) || 0);
 
-      if(!existing && PRODUCTS.some(x => x.sku.toLowerCase() === sku.toLowerCase())){
-        alert('Já existe um produto com esse SKU.');
-        return;
-      }
-
       if(existing){
         Object.assign(existing, { name, category, sector, unit, qty, min });
+        refreshCorredorOptions();
+        closePanel();
+        render();
       } else {
         const now = new Date();
+        const sku = generateSku(category);
         const newProduct = {
           sku, name, category, sector, qty, min, unit,
           scan: { date: formatDate(now), time: formatTime(now) }
         };
         newProduct.qr = 'QR-' + newProduct.sku.replace('-','') + '-' + String(hashCode(newProduct.sku) % 9000 + 1000);
         PRODUCTS.push(newProduct);
+        refreshCorredorOptions();
+        render();
+        openDetail(newProduct.sku, { justCreated: true });
       }
-      refreshFilterOptions();
-      closePanel();
-      render();
     });
   }
 
@@ -744,18 +789,14 @@
     const idx = PRODUCTS.findIndex(x => x.sku === sku);
     PRODUCTS.splice(idx, 1);
     closePanel();
-    refreshFilterOptions();
+    refreshCorredorOptions();
     render();
   }
 
-  function refreshFilterOptions(){
-    const cats = ['todas', ...new Set(PRODUCTS.map(p => p.category))];
+  function refreshCorredorOptions(){
     const cors = ['todos', ...new Set(PRODUCTS.map(p => p.sector.split('-')[0]))].sort();
-    const catVal = categoryFilter.value;
     const corVal = corredorFilter.value;
-    categoryFilter.innerHTML = cats.map(c => `<option value="${c}">${c==='todas' ? 'Todas as categorias' : c}</option>`).join('');
     corredorFilter.innerHTML = cors.map(c => `<option value="${c}">${c==='todos' ? 'Todos os corredores' : 'Corredor ' + c}</option>`).join('');
-    if(cats.includes(catVal)) categoryFilter.value = catVal;
     if(cors.includes(corVal)) corredorFilter.value = corVal;
   }
 
